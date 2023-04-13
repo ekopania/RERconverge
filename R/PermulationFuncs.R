@@ -878,6 +878,112 @@ simBinPhenoSSM=function(tree, trees, root_sp, fg_vec, sisters_list=NULL, pathvec
   return(t)
 }
 
+#'Produces one SSM binary permulation for a gene using the subset master tree method
+#'This function differs from simBinPhenoSSM in several ways:
+	#'Instead of simulating values across the gene tree, this function subsets the master tree to only include species present in the gene tree
+	#'This function also midpoint roots the tree and uses a rate matrix hard coded as a CVC matrix equal to 0.02 for simulations
+	#'This function does NOT require that the relationships among permulated foreground branches match those in the real data as long as the total numbers of foreground branches and foreground tips are the same
+	#'The while loop that searches for a suitable permulated tree will only run 50 times; if it cannot find a suitable tree after 50 tries it will return NULL
+#' @param tree Tree of the gene of interest
+#' @param trees treesObj from \code{\link{readTrees}}
+#' @param fg_vec A vector containing the foreground species
+#' @param sisters_list A list containing pairs of "sister species" in the foreground set (put NULL if empty)
+#' @param pathvec A path vector generated from the real set of foreground animals
+#' @param plotTreeBool Boolean indicator for plotting the output tree (default=FALSE)
+#' @return A SSM binary permulated tree
+#' @export
+simBinPhenoSSM_fromMasterTree=function(tree, trees, fg_vec, sisters_list=NULL, pathvec, plotTreeBool=F){
+  require(phytools)
+  tip.labels = tree$tip.label # the set of species that exist in the gene tree
+  ind_fg = which(tip.labels %in% fg_vec) # indices of the observed foreground animals that exist in the gene tree
+
+  if (length(ind_fg) == 0){
+    t = tree
+    t$edge = NULL
+    t$edge.length = NULL
+    t$Nnode = NULL
+    t$tip.label = NULL
+  } else {
+    fg_k = tip.labels[ind_fg] # the list of the observed foreground animals that exist in the gene tree
+    res = getForegroundInfoClades(fg_k,sisters_list,trees,plotTree=F,useSpecies=tip.labels)
+    fg_tree = res$tree
+    fg.table = res$fg.sisters.table
+
+    #keeps the topology and branch lengths of the master tree but ONLY keeps the tips present in this gene tree
+    #also midpoint roots the tree
+    #variable is named "sim.t" to distinguish it from "t" (output of foreground2Trees below)
+    sim.t=midpoint.root(keep.tip(trees$masterTree, tip.labels))
+    #hard code a constant rate matrix variance value
+    rm=0.02
+    
+    if (!is.null(sisters_list)){
+      fg_tree_info = getBinaryPermulationInputsFromTree(fg_tree)
+      num_tip_sisters_true = unlist(fg_tree_info$sisters_list)
+      num_tip_sisters_true = num_tip_sisters_true[which(num_tip_sisters_true %in% tip.labels)]
+      num_tip_sisters_true = length(num_tip_sisters_true)
+    }
+
+    fgnum = length(which(fg_tree$edge.length == 1))
+    if (!is.null(sisters_list)){
+      internal = nrow(fg.table)
+    } else {
+      internal = 0
+    }
+    tips=fgnum-internal # the number of tips
+    
+    testcondition=FALSE
+    while(!testcondition){
+      blsum=0
+      #Modified so this tries 50 times to generate a tree with the same number of foregrounds; if it doesn't in that time, move on
+      try_count=0
+      while( (blsum!=fgnum) && (try_count < 50) ){
+sims=sim.char(sim.t, rm, nsim = 1, model="BM")
+        nam=rownames(sims)
+        s=as.data.frame(sims)
+        simulatedvec=s[,1]
+        names(simulatedvec)=nam
+        top.all=names(sort(simulatedvec, decreasing = TRUE))
+        top.tree_k = top.all[top.all %in% tip.labels]
+        top = top.tree_k[1:tips]
+        t=foreground2Tree(top, trees, clade="all", plotTree = F, useSpecies=tip.labels)
+        blsum=sum(t$edge.length)
+        try_count=try_count+1
+      }
+      if(try_count==50){
+        t = tree
+        t$edge = NULL
+        t$edge.length = NULL
+        t$Nnode = NULL
+        t$tip.label = NULL
+        testcondition=TRUE
+      } else{
+        t_info = getBinaryPermulationInputsFromTree(t)
+        if (!is.null(sisters_list)){
+          num_tip_sisters_fake = unlist(t_info$sisters_list)
+num_tip_sisters_fake = num_tip_sisters_fake[which(num_tip_sisters_fake %in% tip.labels)]
+          num_tip_sisters_fake = length(num_tip_sisters_fake)
+          t_depth_order = getDepthOrder(t)
+          testcondition = TRUE
+        } else {
+t_depth_order = getDepthOrder(t)
+          testcondition = TRUE
+        }
+      }
+    }
+  }
+  if (plotTreeBool){
+    if(!(is.null(t$tip.label))){
+        print(t)
+        plot(t)
+        write.tree(t, "temp.tre", append=T)
+    } else{
+        write("NULL", "temp.tre", append=T)
+    }
+  }
+  return(t)
+}
+
+
 #' @keywords internal
 findPairs=function(binary.tree){
   tip.labels = binary.tree$tip.label
