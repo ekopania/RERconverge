@@ -300,7 +300,7 @@ getPermsBinary=function(numperms, fg_vec, sisters_list, root_sp, RERmat, trees, 
     row_names = attr2$names
 
     colnames(df.converted) = col_names
-    rownames(df.converted) = row_names
+    rownames(df.converted) the gene tree = row_names
 
     df.converted$num.fg = as.integer(df.converted$num.fg)
     df.converted$num.spec = as.integer(df.converted$num.spec)
@@ -1026,7 +1026,11 @@ generatePermulatedBinPhen=function(tree, numperms, trees, root_sp, fg_vec, siste
     permulated.binphens = lapply(tree_rep, simBinPhenoCC,mastertree=trees$masterTree,root_sp=root_sp, fg_vec=fg_vec,sisters_list=sisters_list,pathvec=pathvec,plotTreeBool=F)
   } else if (permmode=="ssm"){
     tree_rep = lapply(1:numperms,rep_tree,tree=tree)
-    permulated.binphens = lapply(tree_rep,simBinPhenoSSM,trees=trees,root_sp=root_sp,fg_vec=fg_vec,sisters_list=sisters_list,pathvec=pathvec)
+    #gets sisters list for each gene tree, to account for missing data and possible different sisters structure in each gene tree
+    temp_sis=gtSistersList(tree, fg_vec)
+    #permulated.binphens = lapply(tree_rep,simBinPhenoSSM,trees=trees,root_sp=root_sp,fg_vec=fg_vec,sisters_list=sisters_list,pathvec=pathvec)
+    #Calls version of simBinPhenoSSM_fromMasterTree that subsets the master tree instead of using the gene tree
+    permulated.binphens = lapply(tree_rep,simBinPhenoSSM_fromMasterTree,trees=trees,fg_vec=fg_vec,sisters_list=temp_sis,pathvec=pathvec, plotTreeBool=F)
   } else {
     stop("Invalid binary permulation mode.")
   }
@@ -2993,4 +2997,47 @@ getEnrichPermPvals <- function(permenrich, realenrich, binary = FALSE){
   }
 }
 
+#'Makes a custom sisters_list for a given gene tree to account for missing data that makes new foreground sisters groups
+#'As of 4/13/2023 this function does NOT account for anything more complicated than 2 nested clades within foregrounds
+#' @param tree the gene tree
+#' @param fg_vec the vector of foreground tips
+#' @return a list of sister foregrounds
+#' @export
+gtSistersList=function(tree, fg_vec){
+  require(phytools)
+  sis_fg<-list()
+  for(i in fg_vec){
+    #print(paste("Working on foreground", i))
+    #Make sure this fg taxon is in the tree
+    if(length(getSisters(tree, i)) > 0){
+      #Get all sister taxa of i, or all descendents of sister node of i
+      sis_tips<-tree$tip.label[getDescendants(tree, getSisters(tree, i))]
+      #print(sis_tips)
+      #Only add if all sisters/sister node descendents are foreground taxa
+      if(all(sis_tips %in% fg_vec)){
+        #print(sis_tips)
+        #If only one foreground sister, make a new sister vector; append to sis_fg list if this sister pair does not already exist in the sis_fg list
+        if(length(sis_tips) == 1){
+          if(!(list(sort(c(i, sis_tips))) %in% sis_fg)){
+            sis_fg[[paste0("clade",length(sis_fg)+1)]] = sort(c(i, sis_tips))
+          }
+        } else if(length(sis_tips) == 2){
+            #If sis_tips==2, it means there is a sister node with 2 descendents that are also foreground tip; add these sisters as their own clade first, if they are not already in sis_fg, then add this fg taxon plus the clade with the descendents
+            if(!(list(sort(sis_tips)) %in% sis_fg)){
+              sis_fg[[paste0("clade",length(sis_fg)+1)]] = sort(sis_tips)
+            }
+            des_index<-match(list(sort(sis_tips)), sis_fg)
+            sis_fg[[paste0("clade",length(sis_fg)+1)]] = c(paste0("clade",des_index), i)
+        } #else do nothing; if no sisters/descendents are foregrounds we don't want to add anything
+          #IMPORTANT NOTE: doesn't account for anything more complicated than 2 nested clades w/ foregrounds
+      }
+    }
+  }
+  #print(sis_fg)
+  if(length(sis_fg) == 0){
+    NULL #Returns NULL if no foreground taxa are sister
+  } else{
+    sis_fg
+  }
+}
 
