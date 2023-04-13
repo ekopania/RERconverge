@@ -3007,15 +3007,12 @@ gtSistersList=function(tree, fg_vec){
   require(phytools)
   sis_fg<-list()
   for(i in fg_vec){
-    #print(paste("Working on foreground", i))
     #Make sure this fg taxon is in the tree
     if(length(getSisters(tree, i)) > 0){
       #Get all sister taxa of i, or all descendents of sister node of i
       sis_tips<-tree$tip.label[getDescendants(tree, getSisters(tree, i))]
-      #print(sis_tips)
       #Only add if all sisters/sister node descendents are foreground taxa
       if(all(sis_tips %in% fg_vec)){
-        #print(sis_tips)
         #If only one foreground sister, make a new sister vector; append to sis_fg list if this sister pair does not already exist in the sis_fg list
         if(length(sis_tips) == 1){
           if(!(list(sort(c(i, sis_tips))) %in% sis_fg)){
@@ -3033,7 +3030,6 @@ gtSistersList=function(tree, fg_vec){
       }
     }
   }
-  #print(sis_fg)
   if(length(sis_fg) == 0){
     NULL #Returns NULL if no foreground taxa are sister
   } else{
